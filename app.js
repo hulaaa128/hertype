@@ -39,6 +39,11 @@
 
   let currentMode = "learning"; // learning | output | mirror
 
+  // B 方案：三个模式各自维护独立文本，互不污染。
+  // 输出模式的 AI 重写只写回 modeTexts.output；切回学习/镜像模式时还原各自原文做本地解析。
+  const SAMPLE = "他妈的这个绿茶婊真恶心，肯定是陪睡上位的。";
+  const modeTexts = { learning: SAMPLE, output: SAMPLE, mirror: SAMPLE };
+
   // ---- 构建匹配索引：按 trigger 长度降序，保证长词优先（如「妈卖批」先于「妈」）----
   // 用 Map 去重，避免词库里万一有重复 trigger
   const triggerMap = new Map();
@@ -246,6 +251,7 @@
   input.addEventListener("input", () => {
     render();
     if (applyingRewrite) return; // 这次 input 来自重写结果写回，不要再排一次重写
+    modeTexts[currentMode] = input.value; // 用户手动编辑：存回当前模式自己的文本
     scheduleRewrite(); // 输出模式下，停止输入 800ms 后自动重写
   });
   input.addEventListener("scroll", syncScroll);
@@ -294,9 +300,11 @@
 
   modeBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
+      modeTexts[currentMode] = input.value; // 离开前，先把当前框内容存回旧模式
       modeBtns.forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
       currentMode = btn.dataset.mode;
+      input.value = modeTexts[currentMode]; // 载入新模式自己的文本
       hideCard();
       render();
       syncRewriteBox(); // 切到/离开输出模式时，决定是否显示 AI 重写区
@@ -390,15 +398,18 @@
     try {
       const out = await AI.rewrite(text);
       if (seq !== rewriteSeq) return; // 已有更新的请求，丢弃这次旧结果
-      if (out && out !== input.value) {
-        // 把框内原文整体替换为重写结果，原文不留；可继续编辑
-        applyingRewrite = true;
-        input.value = out;
-        input.dispatchEvent(new Event("input", { bubbles: true })); // 触发 render 刷新镜像层/统计
-        applyingRewrite = false;
+      if (out) {
+        modeTexts.output = out; // 重写结果归属输出模式这一份，绝不污染学习/镜像
+        // 仅当用户此刻仍停留在输出模式时，才把结果写回可见的框（途中切走则只更新数据）
+        if (currentMode === "output" && out !== input.value) {
+          applyingRewrite = true;
+          input.value = out;
+          input.dispatchEvent(new Event("input", { bubbles: true })); // 触发 render 刷新镜像层/统计
+          applyingRewrite = false;
+        }
       }
       setRewriteState("已重写", "ok");
-      rewriteCopy.hidden = !input.value;
+      rewriteCopy.hidden = !modeTexts.output;
     } catch (err) {
       if (seq !== rewriteSeq) return;
       setRewriteState("失败：" + err.message, "error"); // 错误贴进状态条，不静默吞
@@ -413,7 +424,7 @@
 
   rewriteCopy.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(input.value);
+      await navigator.clipboard.writeText(modeTexts.output);
       rewriteCopy.textContent = "已复制 ✓";
       setTimeout(() => (rewriteCopy.textContent = "复制"), 1500);
     } catch (_) {
@@ -421,7 +432,7 @@
     }
   });
 
-  // ---- 初始示例：让首屏就有东西可看 ----
-  input.value = "他妈的这个绿茶婊真恶心，肯定是陪睡上位的。";
+  // ---- 初始示例：首屏即学习模式，载入该模式自己的文本 ----
+  input.value = modeTexts[currentMode];
   render();
 })();
