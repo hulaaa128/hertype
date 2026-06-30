@@ -1,0 +1,5 @@
+# Playwright MCP 测试产物
+.playwright-mcp/
+
+# macOS
+.DS_Store

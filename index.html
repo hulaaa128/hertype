@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HerType · 父权语言拼写检查器</title>
+  <link rel="stylesheet" href="style.css?v=6" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="logo">
+      <span class="logo-mark">Her</span><span class="logo-tail">Type</span>
+    </div>
+    <p class="tagline">像查拼写错误一样，查出语言里的父权惯性。</p>
+    <button class="settings-toggle" id="settingsToggle" aria-expanded="false">⚙ 设置</button>
+  </header>
+
+  <!-- 设置区：AI 重写所需的 key / 接口地址 / 模型，全部存浏览器本地 -->
+  <section class="settings-panel" id="settingsPanel" hidden>
+    <div class="settings-inner">
+      <label class="settings-field">
+        <span class="settings-label">API Key</span>
+        <span class="settings-key-row">
+          <input type="password" id="apiKeyInput" class="settings-input" placeholder="粘贴你的 API key" autocomplete="off" spellcheck="false" />
+          <button type="button" class="settings-eye" id="apiKeyEye" aria-label="显示 / 隐藏">👁</button>
+        </span>
+      </label>
+      <label class="settings-field">
+        <span class="settings-label">接口地址</span>
+        <input type="text" id="baseUrlInput" class="settings-input" placeholder="http://ai-api.jdcloud.com/v1" spellcheck="false" />
+      </label>
+      <label class="settings-field">
+        <span class="settings-label">模型</span>
+        <input type="text" id="modelInput" class="settings-input" placeholder="gpt-5.5" spellcheck="false" />
+      </label>
+      <div class="settings-actions">
+        <button type="button" class="settings-save" id="settingsSave">保存</button>
+        <span class="settings-status" id="settingsStatus"></span>
+      </div>
+      <p class="settings-note">仅存于本浏览器本地，不上传、不写入代码。请勿在公网环境或截图中暴露 key。</p>
+    </div>
+  </section>
+
+  <main class="app">
+    <!-- 模式切换 -->
+    <div class="mode-switch" role="tablist" aria-label="干预模式">
+      <button class="mode-btn is-active" data-mode="learning" role="tab">
+        学习模式<span class="mode-hint">标注 + 摊开机制</span>
+      </button>
+      <button class="mode-btn" data-mode="output" role="tab">
+        输出模式<span class="mode-hint">改写成得体可发的话</span>
+      </button>
+      <button class="mode-btn" data-mode="mirror" role="tab">
+        镜像模式<span class="mode-hint">性别对调给你看</span>
+      </button>
+    </div>
+
+    <!-- 编辑区：镜像层 + textarea 双层叠合；AI 重写区内嵌于同一张白卡 -->
+    <div class="editor">
+      <!-- 双层叠合内层 wrapper：保持 backdrop inset:0 只覆盖输入区，不被重写区高度影响 -->
+      <div class="editor-stack">
+        <div class="editor-backdrop" id="backdrop" aria-hidden="true"></div>
+        <textarea
+          id="input"
+          class="editor-input"
+          placeholder="在这里输入或粘贴一段话，试试那些你习以为常的脏话……"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+      </div>
+
+      <!-- AI 整句重写结果直接写回上方输入框，原文不留；此处仅保留极简状态条 -->
+      <div class="rewrite-box" id="rewriteBox" hidden>
+        <div class="rewrite-head">
+          <span class="rewrite-title">AI 重写</span>
+          <span class="rewrite-state" id="rewriteState"></span>
+          <button type="button" class="rewrite-copy" id="rewriteCopy" hidden>复制</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 统计条 -->
+    <div class="stats" id="stats" hidden>
+      <span class="stats-total" id="statsTotal"></span>
+      <div class="stats-bars" id="statsBars"></div>
+    </div>
+  </main>
+
+  <!-- 悬停/点击弹出的批判卡片 -->
+  <div class="critique-card" id="critiqueCard" hidden>
+    <div class="critique-head">
+      <span class="critique-word" id="critWord"></span>
+      <span class="critique-cat" id="critCat"></span>
+    </div>
+    <p class="critique-body" id="critBody"></p>
+    <div class="critique-foot" id="critFoot"></div>
+  </div>
+
+  <footer class="site-footer">
+    <p>语言不仅表达思想，也塑造思想。</p>
+    <p class="muted">所有检测均在本地运行，不上传任何输入。</p>
+  </footer>
+
+  <script src="lexicon.js?v=3"></script>
+  <script src="ai.js?v=3"></script>
+  <script src="app.js?v=4"></script>
+</body>
+</html>
