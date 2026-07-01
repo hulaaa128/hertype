@@ -409,17 +409,25 @@ html, body {
 }
 .critique-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-bottom: 10px;
 }
 .critique-word {
+  flex: 1;
+  min-width: 0;
   font-family: var(--editor-font);
   font-size: 20px;
   font-weight: 700;
+  line-height: 1.35;
   color: var(--ink);
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .critique-cat {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  align-self: flex-start;
   font-size: 12px;
   color: #fff;
   padding: 3px 10px;

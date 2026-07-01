@@ -422,14 +422,22 @@
     }
 
     // 一句话诊断：先报总数，再点破主导通道。单一类别时省去「其中最多」的措辞。
+    // 诊断解释优先用 AI 针对本句写的 explain（灵活、不会搞错受害者性别），
+    // 没有 AI 命中时才退回该机制的写死通用诊断（CAT_DIAGNOSIS）。
     const catKinds = Object.keys(counts).length;
     let diag = `本段共触发 ${hits.length} 处性别化表达`;
-    if (topCat && CAT_DIAGNOSIS[topCat]) {
+    if (topCat) {
       const label = CATEGORIES[topCat].label;
+      // 在主导类别里挑一条 AI 命中且带解释的，用它的 explain 顶替死模板
+      const aiHit = hits.find(
+        (h) => h.entry.category === topCat && h.entry._ai && h.entry.explain
+      );
+      const explain = aiHit ? aiHit.entry.explain : (CAT_DIAGNOSIS[topCat] || "");
+      const tail = explain ? "。" + explain : "。";
       if (catKinds === 1) {
-        diag += `，全部是「${label}」。` + CAT_DIAGNOSIS[topCat];
+        diag += `，全部是「${label}」${tail}`;
       } else {
-        diag += `，其中「${label}」最多（${topN} 处）。` + CAT_DIAGNOSIS[topCat];
+        diag += `，其中「${label}」最多（${topN} 处）${tail}`;
       }
     } else {
       diag += "。";
