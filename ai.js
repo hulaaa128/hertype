@@ -64,6 +64,10 @@
     // 去掉 baseUrl 结尾多余的斜杠,再拼路径
     const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
 
+    // 是否请求流式：只有上层传了 onDelta 回调才走流式（要吐字）。
+    // 没传回调（如一键 AI 场景）就请求非流式，网关直接返完整 JSON，避免把 SSE 文本当 JSON 解析。
+    const wantStream = typeof onDelta === "function";
+
     let resp;
     try {
       resp = await fetch(url, {
@@ -74,7 +78,7 @@
         },
         body: JSON.stringify({
           model: model,
-          stream: true, // 请求流式；网关不认时会照常返完整 JSON，下方据 content-type 判断
+          stream: wantStream,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: text },
@@ -250,5 +254,112 @@
       }));
   }
 
-  window.HERTYPE_AI = { getConfig, saveConfig, hasKey, rewrite, mirrorDetect, DEFAULT_BASE, DEFAULT_MODEL };
+  // ================================================================
+  // 机制识别（analyze）：按《Wordslut》7 类机制做整句语义识别。
+  // 不同于 mirrorDetect（找词+对调），这里的目标是抓「听着正常、实则规训」
+  // 的隐形表达——如「女生就该当贤妻良母」「女孩子读那么多书干嘛」，
+  // 这类没有固定「词」，词库匹配不到，只能靠 AI 理解整句。
+  // ================================================================
+  const ANALYZE_PROMPT =
+    "你是一个女性主义语言分析助手，理论框架来自 Amanda Montell 的《Wordslut》。" +
+    "用户会给你一段中文文本，请找出其中所有再生产性别不平等的表达。" +
+    "不要只盯着脏话或侮辱词——重点也要抓「听起来很正常、甚至像善意」但实际在规训、" +
+    "物化或矮化女性的句子（例如「女生就该当贤妻良母」「你一个女孩子家家的」" +
+    "「女孩读那么多书没用」「女人开车就是不行」）。\n" +
+    "按以下机制判断，category 只能从这十类里选：\n" +
+    "- maternal：母职/亲属羞辱（用侵犯对方母亲来攻击）\n" +
+    "- sexual：性经验羞辱（拿女性性行为数量定罪，如荡妇/绿茶婊/陪睡上位）\n" +
+    "- feminine：女性气质贬低（把「像女人」当侮辱，如娘炮/娘娘腔）\n" +
+    "- rivalry：女性竞争污名（给女性野心/能动性贴负面标签，如心机/母老虎）\n" +
+    "- appearance：外貌规训（用外貌给女性价值定级）\n" +
+    "- merit：能力性化否定（把女性成就归因于身体/性交易）\n" +
+    "- prescriptive：性别角色规训（规定女性「就该」如何，如贤妻良母/该做饭/相夫教子/女孩要文静）\n" +
+    "- derogation：语义贬降（同一称呼指向女性时才染贬义）\n" +
+    "- dehumanize：非人化物化（把女性喻为动物或食物，如母牛/鲜肉/尤物/猎物）\n" +
+    "- default_male：阳性默认或称谓降格（默认某角色是男性、需加「女」前缀才成立；或用甜心/小姑娘等降格称呼）\n" +
+    "判定核心信号：同一行为若男女用词不对称、或把女性成就归因于身体、" +
+    "或性别对调后语义变荒谬，即为命中。\n" +
+    "要求：\n" +
+    "1. 只返回一个 JSON 数组，不要任何额外文字、不要 markdown 代码块；\n" +
+    "2. 数组每项格式：{\"fragment\":\"命中的原文片段（必须逐字出现在原文里）\",\"category\":\"十类之一\",\"severity\":1到5的整数,\"explain\":\"一句话点破它如何再生产性别不平等；若是规训型这类善意包装，语气要冷静点破而非攻击\"}；\n" +
+    "3. fragment 必须是原文里真实存在的连续子串，不要改写、不要加引号；\n" +
+    "4. 规训型（prescriptive）这类隐蔽表达 severity 一般给 2-3，露骨侮辱给 4-5；\n" +
+    "5. 如果没有发现任何此类表达，返回空数组 []。";
+
+  const ANALYZE_CATS = [
+    "maternal", "sexual", "feminine", "rivalry", "appearance", "merit",
+    "prescriptive", "derogation", "dehumanize", "default_male",
+  ];
+
+  /**
+   * 机制识别：返回 [{ fragment, category, severity, explain }]，
+   * 供学习模式在原文上高亮（与本地词库命中合并）。失败一律 reject(Error)。
+   */
+  async function analyze(text) {
+    const { key, baseUrl, model } = getConfig();
+    if (!key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
+    if (!text.trim()) return [];
+
+    const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
+
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + key,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: ANALYZE_PROMPT },
+            { role: "user", content: text },
+          ],
+        }),
+      });
+    } catch (e) {
+      throw new Error("请求发送失败:" + e.message + "(可能是接口地址不通或跨域,请检查设置)");
+    }
+
+    if (!resp.ok) {
+      let detail = "";
+      try { detail = await resp.text(); } catch (_) {}
+      throw new Error("接口返回 " + resp.status + " " + resp.statusText + "\n" + detail.slice(0, 500));
+    }
+
+    let data;
+    try {
+      data = await resp.json();
+    } catch (e) {
+      throw new Error("返回内容无法解析为 JSON:" + e.message);
+    }
+
+    let out = data?.choices?.[0]?.message?.content;
+    if (!out) throw new Error("返回里没有内容,原始返回:" + JSON.stringify(data).slice(0, 500));
+
+    // 容错：模型可能裹了 ```json 代码块，剥掉再解析
+    out = out.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    let arr;
+    try {
+      arr = JSON.parse(out);
+    } catch (e) {
+      throw new Error("AI 返回不是合法 JSON:" + out.slice(0, 300));
+    }
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((it) => it && typeof it.fragment === "string" && it.fragment && ANALYZE_CATS.includes(it.category))
+      .map((it) => {
+        let sev = parseInt(it.severity, 10);
+        if (!(sev >= 1 && sev <= 5)) sev = 3;
+        return {
+          fragment: it.fragment,
+          category: it.category,
+          severity: sev,
+          explain: typeof it.explain === "string" ? it.explain : "",
+        };
+      });
+  }
+
+  window.HERTYPE_AI = { getConfig, saveConfig, hasKey, rewrite, mirrorDetect, analyze, DEFAULT_BASE, DEFAULT_MODEL };
 })();

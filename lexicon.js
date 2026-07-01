@@ -1,13 +1,19 @@
 /**
  * HerType 词库引擎
  * ----------------------------------------------------------------
- * 6 大分类（按「攻击机制」而非「字面」划分）：
- *   maternal   母职/亲属羞辱   —— 用侵犯对方母亲完成攻击，预设女性是男性所有物
- *   sexual     性经验羞辱       —— 用女性性活跃度=低价值，规训女性身体
- *   feminine   女性气质贬低     —— 把「像女人」当成侮辱，本质贬低女性
- *   rivalry    女性竞争污名     —— 给女性的能动性/野心贴负面标签
- *   appearance 外貌规训         —— 用外貌评判女性价值，男性不受此约束
- *   merit      能力性化否定     —— 把女性成就归因于性交易而非能力（最隐蔽、杀伤最大）
+ * 分类（按「攻击机制」而非「字面」划分）：
+ *   maternal     母职/亲属羞辱   —— 用侵犯对方母亲完成攻击，预设女性是男性所有物
+ *   sexual       性经验羞辱       —— 用女性性活跃度=低价值，规训女性身体
+ *   feminine     女性气质贬低     —— 把「像女人」当成侮辱，本质贬低女性
+ *   rivalry      女性竞争污名     —— 给女性的能动性/野心贴负面标签
+ *   appearance   外貌规训         —— 用外貌评判女性价值，男性不受此约束
+ *   merit        能力性化否定     —— 把女性成就归因于性交易而非能力（最隐蔽、杀伤最大）
+ *
+ * 以下 4 类主要靠 AI 按语义识别（源自《Wordslut》机制框架，见 docs/）：
+ *   prescriptive 性别角色规训     —— 「女生就该当贤妻良母/该做饭」这类听着正常、实则规训
+ *   derogation   语义贬降         —— 同一词指向女性时才染贬义（小姐/大姐 vs 先生）
+ *   dehumanize   非人化(动物/食物) —— 把女性喻为牲畜或可食用物（母牛/鲜肉/尤物）
+ *   default_male 阳性默认/称谓降格 —— 需加「女」前缀才成立；或用甜心/小姑娘降格称呼
  *
  * 每条词条字段：
  *   trigger    触发词（命中的原词）
@@ -19,12 +25,17 @@
  */
 
 const CATEGORIES = {
-  maternal:   { label: "母职 / 亲属羞辱", color: "#d6336c" },
-  sexual:     { label: "性经验羞辱",       color: "#c2255c" },
-  feminine:   { label: "女性气质贬低",     color: "#9c36b5" },
-  rivalry:    { label: "女性竞争污名",     color: "#e8590c" },
-  appearance: { label: "外貌规训",         color: "#e67700" },
-  merit:      { label: "能力性化否定",     color: "#a61e4d" },
+  maternal:     { label: "母职 / 亲属羞辱", color: "#d6336c" },
+  sexual:       { label: "性经验羞辱",       color: "#c2255c" },
+  feminine:     { label: "女性气质贬低",     color: "#9c36b5" },
+  rivalry:      { label: "女性竞争污名",     color: "#e8590c" },
+  appearance:   { label: "外貌规训",         color: "#e67700" },
+  merit:        { label: "能力性化否定",     color: "#a61e4d" },
+  // —— 以下 4 类主要由 AI 语义识别补充（配色与上方粉紫橙系拉开区分度）——
+  prescriptive: { label: "性别角色规训",     color: "#1971c2" }, // 蓝
+  derogation:   { label: "语义贬降",         color: "#0c8599" }, // 青
+  dehumanize:   { label: "非人化物化",       color: "#2f9e44" }, // 绿
+  default_male: { label: "阳性默认 / 称谓降格", color: "#495057" }, // 灰蓝
 };
 
 const LEXICON = [

@@ -228,6 +228,46 @@ html, body {
   opacity: 0.7;
 }
 
+/* ---- 一键 AI：三模式一起跑的醒目主按钮 ---- */
+.allai-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.allai-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #9c36b5);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(194, 37, 92, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.allai-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(194, 37, 92, 0.36);
+}
+.allai-btn:active { transform: translateY(0); }
+.allai-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+.allai-state {
+  font-size: 13px;
+  color: var(--muted);
+}
+.allai-state.is-loading { color: var(--accent); }
+.allai-state.is-ok { color: #2f9e44; }
+.allai-state.is-warn { color: #e8590c; }
+.allai-state.is-error { color: #c92a2a; }
+
 /* ---- 编辑区：双层叠合 ---- */
 .editor {
   position: relative;

@@ -17,6 +17,10 @@
     rivalry:    "给女性的野心和能动性贴上污名——她有企图心就成了「心机」，男人则叫「有魄力」。",
     appearance: "用外貌给女性的价值定级——同一张评判表，从来不拿去量男性。",
     merit:      "把她的成就归因于身体交易——这是最隐蔽的否定：连她挣来的都不算她的。",
+    prescriptive: "用「就该、就得、才像话」规定女性的人生——听起来像关心，实则是替她画好一条不许越界的线。",
+    derogation: "同一个称呼，指向女性时就染上贬义——语言本身记录了谁被默认为低一等。",
+    dehumanize: "把女性比作牲畜或食物——是待宰、待驯、待人挑选和享用之物，而非一个人。",
+    default_male:"默认这个角色是男性，或用亲昵称呼把女性降格——女性得额外证明自己「也算」，或被当成小妹妹对待。",
   };
 
   // ---- DOM 引用 ----
@@ -50,22 +54,36 @@
   const mirrorBox     = document.getElementById("mirrorBox");
   const mirrorState   = document.getElementById("mirrorState");
   const mirrorRun     = document.getElementById("mirrorRun");
+  const learnBox      = document.getElementById("learnBox");
+  const learnState    = document.getElementById("learnState");
+  const learnRun      = document.getElementById("learnRun");
+  const allAiRun      = document.getElementById("allAiRun");
+  const allAiState    = document.getElementById("allAiState");
 
   let currentMode = "learning"; // learning | output | mirror
 
-  // 单向同步方案：学习模式是唯一「输入源」，只标注不改字。
-  // 切到输出/镜像模式时，自动从 sourceText 载入学习模式的当前原文。
-  // - 输出模式的 AI 重写结果只写进 outputText（临时、可复制），绝不回写 sourceText；
-  // - 镜像模式在 sourceText 上做词库对调 + AI 补充，也不改 sourceText。
+  // 单向同步 + AI 结果锁定方案：
+  // 学习模式是唯一「输入源」sourceText，只标注不改字。
+  // 输出/镜像模式默认从 sourceText 载入，但一旦点了 AI（重写/对调），
+  // 该模式的 AI 结果就「锁定」——切走再切回来仍显示 AI 结果，不被 sourceText 冲掉。
+  // 锁定只在原文没变时有效：sourceText 一改，各模式的 AI 结果作废（对旧文本，会张冠李戴）。
   const SAMPLE = "他妈的这个绿茶婊真恶心，肯定是陪睡上位的。";
   let sourceText = SAMPLE; // 学习模式原文，唯一输入源
   let outputText = SAMPLE; // 输出模式当前展示文本（重写前=原文，重写后=AI 结果）
+  // 输出模式 AI 重写结果锁定：记录这次重写结果对应的源文本；与 sourceText 不符即作废
+  let outputLockedForSource = null;
 
   // 镜像模式的 AI 补充命中（词库没覆盖、AI 找出的性别化表达）。
   // mirrorAiHitsForText 记录这批命中对应的文本，文本一变就作废，防止画错位置。
   let mirrorAiHits = [];
   let mirrorAiHitsForText = null;
   let mirrorSeq = 0;
+
+  // 学习模式的 AI 机制识别命中（抓「贤妻良母」这类词库无固定词的规训表达）。
+  // 与镜像同理：learnAiHitsForText 一旦和当前文本不符就作废。
+  let learnAiHits = [];
+  let learnAiHitsForText = null;
+  let learnSeq = 0;
 
   // ---- 构建匹配索引：按 trigger 长度降序，保证长词优先（如「妈卖批」先于「妈」）----
   // 用 Map 去重，避免词库里万一有重复 trigger
@@ -175,16 +193,17 @@
   }
 
   /**
-   * 把镜像模式 AI 补出的片段并进本地命中数组。
+   * 把 AI 补出的片段并进本地命中数组。
    * 仅收本地词库没占用的区间（本地优先，AI 只补漏），并按 start 重新排序。
-   * mirrorAiHits 里每项是构造好的 { start, end, entry }，entry._ai 标记为 AI 补充。
+   * aiHits 里每项是构造好的 { start, end, entry }，entry._ai 标记为 AI 补充。
+   * 镜像模式传 mirrorAiHits，学习模式传 learnAiHits，逻辑完全一致。
    */
-  function mergeMirrorAiHits(hits, text) {
+  function mergeAiHits(hits, text, aiHits) {
     const occupied = new Array(text.length).fill(false);
     for (const h of hits) {
       for (let i = h.start; i < h.end; i++) occupied[i] = true;
     }
-    for (const ai of mirrorAiHits) {
+    for (const ai of aiHits) {
       if (ai.start < 0 || ai.end > text.length || ai.start >= ai.end) continue;
       let free = true;
       for (let i = ai.start; i < ai.end; i++) {
@@ -195,6 +214,43 @@
       hits.push(ai);
     }
     hits.sort((a, b) => a.start - b.start);
+  }
+
+  /**
+   * 把 AI 返回的 [{fragment, category, severity, explain, mirror?}] 在原文里
+   * 逐个 indexOf 定位成 [{start, end, entry}]，同一 fragment 多次出现都定位、跳过已占用。
+   * entry 带 _ai:true 标记，走 hit--ai 高亮。供镜像/学习两个模式共用。
+   */
+  function buildAiHits(list, text) {
+    const built = [];
+    const used = new Array(text.length).fill(false);
+    for (const it of list) {
+      let from = 0;
+      while (true) {
+        const idx = text.indexOf(it.fragment, from);
+        if (idx === -1) break;
+        const end = idx + it.fragment.length;
+        let free = true;
+        for (let i = idx; i < end; i++) { if (used[i]) { free = false; break; } }
+        if (free) {
+          for (let i = idx; i < end; i++) used[i] = true;
+          built.push({
+            start: idx,
+            end,
+            entry: {
+              trigger: it.fragment,
+              category: it.category,
+              mirror: typeof it.mirror === "string" ? it.mirror : "",
+              explain: it.explain || "",
+              severity: it.severity || 3,
+              _ai: true,
+            },
+          });
+        }
+        from = end;
+      }
+    }
+    return built;
   }
 
   /**
@@ -209,7 +265,11 @@
     // 镜像模式：把 AI 补出的、词库没覆盖的性别化片段并进来一起画
     // （只在文本没变时有效，文本一改这批命中就作废，避免画错位置）
     if (currentMode === "mirror" && mirrorAiHitsForText === text && mirrorAiHits.length) {
-      mergeMirrorAiHits(hits, text);
+      mergeAiHits(hits, text, mirrorAiHits);
+    }
+    // 学习模式：把 AI 机制识别抓到的隐形表达（如「贤妻良母」）并进来一起画
+    if (currentMode === "learning" && learnAiHitsForText === text && learnAiHits.length) {
+      mergeAiHits(hits, text, learnAiHits);
     }
     let html = "";
     let cursor = 0;
@@ -292,16 +352,17 @@
     critCat.style.background = cat.color;
 
     if (currentMode === "learning") {
-      critBody.textContent = entry.explain;
-      critFoot.textContent = "严重度 " + "●".repeat(entry.severity) + "○".repeat(5 - entry.severity);
+      // explain 优先用词条自带解释；AI 命中若没给，退回该机制的通用诊断
+      critBody.textContent = entry.explain || CAT_DIAGNOSIS[entry.category] || cat.label;
+      critFoot.textContent =
+        cat.label + " · 严重度 " + "●".repeat(entry.severity) + "○".repeat(5 - entry.severity);
     } else if (currentMode === "mirror") {
-      const src = entry._ai ? "（词库未收录，AI 补充识别）" : "";
       if (entry.mirror === "") {
-        critBody.textContent = "「" + entry.trigger + "」性别对调后……找不到对应的词。男性几乎没有被这样羞辱的说法——这套词，是专为羞辱女性而造的。" + src;
-        critFoot.textContent = cat.label + " · 无男版对应词" + (entry._ai ? " · AI 补充" : "");
+        critBody.textContent = "「" + entry.trigger + "」性别对调后……找不到对应的词。男性几乎没有被这样羞辱的说法——这套词，是专为羞辱女性而造的。";
+        critFoot.textContent = cat.label + " · 无男版对应词";
       } else {
-        critBody.textContent = "性别对调后：「" + entry.trigger + "」→「" + entry.mirror + "」。觉得别扭吗？这份别扭，正是双标的证据。" + src;
-        critFoot.textContent = cat.label + (entry._ai ? " · AI 补充" : "");
+        critBody.textContent = "性别对调后：「" + entry.trigger + "」→「" + entry.mirror + "」。觉得别扭吗？这份别扭，正是双标的证据。";
+        critFoot.textContent = cat.label;
       }
     } else {
       // 输出模式：命中词只负责「指出问题」，整句改写在下方 AI 结果区
@@ -331,7 +392,8 @@
 
   // ---- 统计条 ----
   function renderStats(hits) {
-    if (hits.length === 0) {
+    // 镜像模式重点是「性别对调给你看」，统计诊断在此多余，直接隐藏
+    if (currentMode === "mirror" || hits.length === 0) {
       statsBox.hidden = true;
       return;
     }
@@ -406,9 +468,15 @@
       setRewriteState("", "");
       rewriteCopy.hidden = true;
     }
-    // 镜像模式：文本一改，之前那批 AI 补充命中就作废（位置会错），提示重新补充
+    // 镜像模式：文本一改，之前那批 AI 对调命中就作废（位置会错），提示重新对调
     if (currentMode === "mirror" && mirrorAiHitsForText !== input.value) {
-      setMirrorState("文本已改，点「AI 补充对调」重新识别", "");
+      setMirrorState("文本已改，点「AI 对调」重新识别", "");
+    }
+    // 学习模式：文本一改，旧的 AI 命中作废（防画错位置），提示可重新检测
+    if (currentMode === "learning" && learnAiHitsForText !== input.value) {
+      learnAiHits = [];
+      learnAiHitsForText = null;
+      setLearnState("文本已改，点「AI 检测」重新识别", "");
     }
   });
   input.addEventListener("scroll", syncScroll);
@@ -465,24 +533,43 @@
       btn.classList.add("is-active");
       currentMode = btn.dataset.mode;
 
-      // 单向同步：输出/镜像模式都以学习模式的原文 sourceText 为准载入。
-      // 输出模式载入原文作为「待重写」初值（重写后才变成 AI 结果）；
-      // 镜像模式载入原文做词库对调。学习模式本就展示 sourceText。
+      // 原文若已变，先把各模式过期的 AI 结果作废（对旧文本，位置/内容对不上）
+      invalidateStaleAiResults();
+
+      // 载入当前模式要展示的文本：
+      // - 输出模式：若 AI 重写结果仍对应当前原文，就展示锁定的结果；否则回到原文待重写
+      // - 镜像/学习：展示 sourceText（镜像的 AI 对调命中若仍有效，render 时自动并入高亮）
       if (currentMode === "output") {
-        outputText = sourceText;   // 切进来先跟原文对齐，等用户点「重写」
-        input.value = outputText;
+        if (outputLockedForSource === sourceText) {
+          input.value = outputText;        // 展示锁定的 AI 重写结果
+        } else {
+          outputText = sourceText;         // 未重写或已过期：跟原文对齐
+          input.value = outputText;
+        }
       } else {
         input.value = sourceText;
       }
-      // 换文本了，镜像的 AI 补充命中作废（位置会错）
-      mirrorAiHits = [];
-      mirrorAiHitsForText = null;
 
       hideCard();
       render();
-      syncRewriteBox(); // 切到/离开输出模式时，决定是否显示 AI 重写区
+      syncRewriteBox(); // 按模式显示对应的 AI 操作区并刷新状态
     });
   });
+
+  // 原文（sourceText）变化后，把各模式指向旧文本的 AI 结果统一作废
+  function invalidateStaleAiResults() {
+    if (outputLockedForSource !== sourceText) {
+      outputLockedForSource = null;
+    }
+    if (mirrorAiHitsForText !== sourceText) {
+      mirrorAiHits = [];
+      mirrorAiHitsForText = null;
+    }
+    if (learnAiHitsForText !== sourceText) {
+      learnAiHits = [];
+      learnAiHitsForText = null;
+    }
+  }
 
   // ================================================================
   // 设置区：填 / 存 API key、接口地址、模型（全部 localStorage）
@@ -531,21 +618,39 @@
 
   // 根据当前模式显示 / 隐藏 AI 重写区、镜像补充区（不自动触发，等用户点按钮）
   function syncRewriteBox() {
+    // 输出模式：AI 重写区
     if (currentMode === "output") {
       rewriteBox.hidden = false;
-      setRewriteState("点「重写这段」，AI 会去掉羞辱、留住情绪", "");
-      rewriteCopy.hidden = true;
+      if (outputLockedForSource === sourceText) {
+        setRewriteState("已重写（原文一改会重置）", "ok");
+        rewriteCopy.hidden = !outputText;
+      } else {
+        setRewriteState("点「重写这段」，AI 会去掉羞辱、留住情绪", "");
+        rewriteCopy.hidden = true;
+      }
     } else {
       rewriteBox.hidden = true;
     }
 
+    // 学习模式：AI 检测区（本地词库已实时标注，AI 检测补充更隐蔽的表达）
+    if (currentMode === "learning") {
+      learnBox.hidden = false;
+      if (learnAiHitsForText === input.value && learnAiHits.length) {
+        setLearnState("AI 已补充识别 " + learnAiHits.length + " 处", "ok");
+      } else {
+        setLearnState("本地已即时标注；点「AI 检测」抓更隐蔽的规训表达", "");
+      }
+    } else {
+      learnBox.hidden = true;
+    }
+
+    // 镜像模式：AI 对调区（本地词库先对调兜底，AI 对调更完整；不再提「词库」概念）
     if (currentMode === "mirror") {
       mirrorBox.hidden = false;
-      // 若这批 AI 补充命中已不属于当前文本，提示可重新补充
       if (mirrorAiHitsForText === input.value && mirrorAiHits.length) {
-        setMirrorState("已补充 " + mirrorAiHits.length + " 处词库外表达", "ok");
+        setMirrorState("AI 已补充对调 " + mirrorAiHits.length + " 处", "ok");
       } else {
-        setMirrorState("本地已逐词对调；点「AI 补充对调」抓词库没覆盖的表达", "");
+        setMirrorState("已即时对调；点「AI 对调」让 AI 识别更完整", "");
       }
     } else {
       mirrorBox.hidden = true;
@@ -570,48 +675,19 @@
     }
 
     const seq = ++mirrorSeq;
-    setMirrorState("AI 正在找词库外的表达…", "loading");
+    setMirrorState("AI 正在做性别对调…", "loading");
     mirrorRun.disabled = true;
 
     try {
       const list = await AI.mirrorDetect(text);
       if (seq !== mirrorSeq) return; // 有更新的请求，丢弃旧结果
-      // 把 AI 返回的片段在原文里定位成 { start, end, entry }
-      const built = [];
-      const used = new Array(text.length).fill(false);
-      for (const it of list) {
-        // 同一 fragment 可能出现多次，逐个 indexOf 定位、跳过已占用
-        let from = 0;
-        while (true) {
-          const idx = text.indexOf(it.fragment, from);
-          if (idx === -1) break;
-          const end = idx + it.fragment.length;
-          let free = true;
-          for (let i = idx; i < end; i++) { if (used[i]) { free = false; break; } }
-          if (free) {
-            for (let i = idx; i < end; i++) used[i] = true;
-            built.push({
-              start: idx,
-              end,
-              entry: {
-                trigger: it.fragment,
-                category: it.category,
-                mirror: it.mirror,
-                explain: it.explain,
-                severity: 3,
-                _ai: true,
-              },
-            });
-          }
-          from = end;
-        }
-      }
+      const built = buildAiHits(list, text); // 在原文里定位成 { start, end, entry }
       mirrorAiHits = built;
       mirrorAiHitsForText = text;
       render();
       if (currentMode === "mirror") {
-        if (built.length) setMirrorState("已补充 " + built.length + " 处词库外表达", "ok");
-        else setMirrorState("AI 没找到词库以外的性别化表达", "ok");
+        if (built.length) setMirrorState("AI 已补充对调 " + built.length + " 处", "ok");
+        else setMirrorState("AI 没找到更多可对调的表达", "ok");
       }
     } catch (err) {
       if (seq !== mirrorSeq) return;
@@ -624,6 +700,129 @@
   mirrorRun.addEventListener("click", () => {
     if (currentMode === "mirror") triggerMirrorDetect();
   });
+
+  // ================================================================
+  // 学习模式：AI 机制识别（点「AI 检测」按钮触发）
+  // 本地词库实时标注兜底；AI 按《Wordslut》机制补上词库抓不到的隐形表达
+  // （如「贤妻良母」「女生为什么当程序员」）。命中带 _ai 标记走 hit--ai 高亮。
+  // ================================================================
+  function setLearnState(txt, kind) {
+    learnState.textContent = txt;
+    learnState.className = "rewrite-state" + (kind ? " is-" + kind : "");
+  }
+
+  async function triggerLearnAnalyze() {
+    const text = input.value;
+    if (!text.trim()) {
+      setLearnState("框里还没内容", "");
+      return;
+    }
+    if (!AI.hasKey()) {
+      setLearnState("缺少 key — 请点右上角「设置」填入 API key", "warn");
+      return;
+    }
+
+    const seq = ++learnSeq;
+    setLearnState("AI 正在按机制检测…", "loading");
+    learnRun.disabled = true;
+
+    try {
+      const list = await AI.analyze(text);
+      if (seq !== learnSeq) return; // 有更新的请求，丢弃旧结果
+      learnAiHits = buildAiHits(list, text);
+      learnAiHitsForText = text;
+      render();
+      if (currentMode === "learning") {
+        if (learnAiHits.length) setLearnState("AI 补充识别出 " + learnAiHits.length + " 处", "ok");
+        else setLearnState("AI 没找到词库以外的表达", "ok");
+      }
+    } catch (err) {
+      if (seq !== learnSeq) return;
+      setLearnState("失败：" + err.message, "error"); // 原文贴出，不静默吞
+    } finally {
+      learnRun.disabled = false;
+    }
+  }
+
+  learnRun.addEventListener("click", () => {
+    if (currentMode === "learning") triggerLearnAnalyze();
+  });
+
+  // ================================================================
+  // 一键 AI：对当前原文并发跑 学习检测 / 输出重写 / 镜像对调，结果各自锁定。
+  // 三个请求独立成败（allSettled），谁先回来先落地；当前所在模式的结果一到就 render。
+  // 之后切到任一模式，AI 结果都已现成（原文没变时锁定有效）。
+  // ================================================================
+  async function triggerAllAi() {
+    // 以当前框内容为准，并同步回各文本源（学习/镜像看 sourceText，输出看 outputText）
+    const text = input.value.trim();
+    if (!text) { setAllAiState("框里还没内容", ""); return; }
+    if (!AI.hasKey()) { setAllAiState("缺少 key — 请点右上角「设置」填入 API key", "warn"); return; }
+
+    // 统一基准文本：一键 AI 三件事都绑定这一份 base，作为锁定依据
+    const base = input.value;
+    if (currentMode === "output") outputText = base; else sourceText = base;
+
+    setAllAiState("3 项 AI 处理中…", "loading");
+    allAiRun.disabled = true;
+    // 三个单独按钮也一起禁用，避免并发冲突
+    learnRun.disabled = mirrorRun.disabled = rewriteRun.disabled = true;
+
+    // 网关按「每秒请求数」限流，三个请求齐发会撞 429。
+    // 故错峰发送：每个之间隔一小段，既保留「一键」体验，又不超每秒配额。
+    const GAP_MS = 450;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // 学习检测
+    const pLearn = AI.analyze(base).then((list) => {
+      learnAiHits = buildAiHits(list, base);
+      learnAiHitsForText = base;
+    });
+    // 镜像对调（错峰）
+    const pMirror = sleep(GAP_MS).then(() => AI.mirrorDetect(base)).then((list) => {
+      mirrorAiHits = buildAiHits(list, base);
+      mirrorAiHitsForText = base;
+    });
+    // 输出重写（再错峰；一键场景不做流式，直接取完整结果即可）
+    const pRewrite = sleep(GAP_MS * 2).then(() => AI.rewrite(base)).then((out) => {
+      if (out) { outputText = out; outputLockedForSource = base; }
+    });
+
+    const [rLearn, rMirror, rRewrite] = await Promise.allSettled([pLearn, pMirror, pRewrite]);
+
+    // 若等待期间用户改了框内容（原文变了），不强行覆盖用户正在编辑的文本；
+    // 数据已按 base 锁定，等原文改回或重跑时自然生效。此处只在文本未变时同步展示。
+    if (input.value === base) {
+      // 输出模式：把重写结果写回可见框
+      if (currentMode === "output" && outputLockedForSource === base && outputText !== input.value) {
+        applyingRewrite = true;
+        input.value = outputText;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        applyingRewrite = false;
+      }
+      render();
+      syncRewriteBox();
+    }
+
+    const fails = [rLearn, rMirror, rRewrite].filter((r) => r.status === "rejected");
+    if (fails.length === 0) {
+      setAllAiState("三模式已全部完成，切换查看", "ok");
+    } else if (fails.length === 3) {
+      setAllAiState("失败：" + (fails[0].reason?.message || "AI 请求出错"), "error");
+    } else {
+      setAllAiState("完成 " + (3 - fails.length) + "/3，部分失败", "warn");
+    }
+
+    allAiRun.disabled = false;
+    learnRun.disabled = mirrorRun.disabled = rewriteRun.disabled = false;
+  }
+
+  function setAllAiState(txt, kind) {
+    allAiState.textContent = txt;
+    allAiState.className = "allai-state" + (kind ? " is-" + kind : "");
+  }
+
+  allAiRun.addEventListener("click", triggerAllAi);
 
   // 真正发起重写
   async function triggerRewrite() {
@@ -673,6 +872,7 @@
       }
       setRewriteState("已重写", "ok");
       rewriteCopy.hidden = !outputText;
+      outputLockedForSource = sourceText; // 锁定：这次重写结果绑定当前原文，切走再回来仍在
     } catch (err) {
       if (seq !== rewriteSeq) return;
       setRewriteState("失败：" + err.message, "error"); // 错误贴进状态条，不静默吞
@@ -704,5 +904,5 @@
   // ---- 初始示例：首屏即学习模式，载入原文 ----
   input.value = sourceText;
   render();
-  syncRewriteBox(); // 首屏学习模式：隐藏重写区 / 镜像补充区
+  syncRewriteBox(); // 首屏学习模式：显示 AI 检测区，本地词库已即时标注
 })();

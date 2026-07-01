@@ -55,6 +55,12 @@
       </button>
     </div>
 
+    <!-- 一键 AI：对当前原文同时跑 学习检测 / 输出重写 / 镜像对调，结果各自锁定 -->
+    <div class="allai-bar">
+      <button type="button" class="allai-btn" id="allAiRun">⚡ 一键 AI · 三模式一起跑</button>
+      <span class="allai-state" id="allAiState"></span>
+    </div>
+
     <!-- 编辑区：镜像层 + textarea 双层叠合；AI 重写区内嵌于同一张白卡 -->
     <div class="editor">
       <!-- 双层叠合内层 wrapper：保持 backdrop inset:0 只覆盖输入区，不被重写区高度影响 -->
@@ -69,6 +75,15 @@
         ></textarea>
       </div>
 
+      <!-- 学习模式：本地词库实时标注兜底；点「AI 检测」让 AI 按机制识别更隐蔽的表达 -->
+      <div class="rewrite-box" id="learnBox" hidden>
+        <div class="rewrite-head">
+          <span class="rewrite-title">AI 检测</span>
+          <span class="rewrite-state" id="learnState"></span>
+          <button type="button" class="rewrite-run" id="learnRun">AI 检测</button>
+        </div>
+      </div>
+
       <!-- AI 整句重写：点「重写」按钮才调用，结果写回上方输入框，原文不留 -->
       <div class="rewrite-box" id="rewriteBox" hidden>
         <div class="rewrite-head">
@@ -79,12 +94,12 @@
         </div>
       </div>
 
-      <!-- 镜像模式：本地词库先逐词对调，点按钮让 AI 补出词库没覆盖的性别化表达 -->
+      <!-- 镜像模式：本地词库先逐词对调兜底，点按钮让 AI 做更完整的性别对调 -->
       <div class="rewrite-box" id="mirrorBox" hidden>
         <div class="rewrite-head">
-          <span class="rewrite-title">镜像 · AI 补充</span>
+          <span class="rewrite-title">镜像 · AI 对调</span>
           <span class="rewrite-state" id="mirrorState"></span>
-          <button type="button" class="rewrite-run" id="mirrorRun">AI 补充对调</button>
+          <button type="button" class="rewrite-run" id="mirrorRun">AI 对调</button>
         </div>
       </div>
     </div>
@@ -108,7 +123,7 @@
 
   <footer class="site-footer">
     <p>语言不仅表达思想，也塑造思想。</p>
-    <p class="muted">学习模式完全在本地运行、不上传任何输入；输出模式的 AI 重写、镜像模式的 AI 对调会把该段文本发送给你配置的大模型。</p>
+    <p class="muted">三个模式都会用本地词库即时标注（不上传）；此外学习模式的 AI 机制识别、输出模式的 AI 重写、镜像模式的 AI 对调，都会把当前文本发送给你配置的大模型。你的 API key 只存于本浏览器本地。</p>
   </footer>
 
   <script src="lexicon.js?v=3"></script>
