@@ -85,6 +85,11 @@
   let learnAiHitsForText = null;
   let learnSeq = 0;
 
+  // 自动触发 AI 的防抖定时器：学习/镜像模式下，用户停手 800ms 后自动跑一次 AI，
+  // 不用手动点按钮。输出模式不自动（它会覆盖输入框，自动会打断打字）。
+  let autoAiTimer = null;
+  const AUTO_AI_DELAY = 800;
+
   // ---- 构建匹配索引：按 trigger 长度降序，保证长词优先（如「妈卖批」先于「妈」）----
   // 用 Map 去重，避免词库里万一有重复 trigger
   const triggerMap = new Map();
@@ -485,17 +490,34 @@
       setRewriteState("", "");
       rewriteCopy.hidden = true;
     }
-    // 镜像模式：文本一改，之前那批 AI 对调命中就作废（位置会错），提示重新对调
+    // 镜像模式：文本一改，之前那批 AI 对调命中就作废（位置会错）
     if (currentMode === "mirror" && mirrorAiHitsForText !== input.value) {
-      setMirrorState("文本已改，点「AI 对调」重新识别", "");
+      setMirrorState("文本已改，正在重新对调…", "");
     }
-    // 学习模式：文本一改，旧的 AI 命中作废（防画错位置），提示可重新检测
+    // 学习模式：文本一改，旧的 AI 命中作废（防画错位置）
     if (currentMode === "learning" && learnAiHitsForText !== input.value) {
       learnAiHits = [];
       learnAiHitsForText = null;
-      setLearnState("文本已改，点「AI 检测」重新识别", "");
+      setLearnState("文本已改，正在重新检测…", "");
     }
+    // 自动触发 AI：学习 / 镜像模式下，停手 AUTO_AI_DELAY 毫秒后自动跑对应的 AI。
+    // 输出模式不自动（重写会覆盖输入框，自动触发会打断用户打字）。
+    scheduleAutoAi();
   });
+
+  // 防抖调度：清掉上一个定时器，重新计时；到点后按当前模式自动跑 AI。
+  // 每个 trigger 函数内部都有 seq 防重，旧请求结果会被自动丢弃，无需在此额外处理。
+  function scheduleAutoAi() {
+    if (autoAiTimer) clearTimeout(autoAiTimer);
+    if (currentMode === "output") return; // 输出模式不自动
+    if (!input.value.trim()) return;      // 空文本不触发
+    if (!AI.hasKey()) return;             // 没配 key 不触发（避免反复弹失败）
+    autoAiTimer = setTimeout(() => {
+      autoAiTimer = null;
+      if (currentMode === "learning") triggerLearnAnalyze();
+      else if (currentMode === "mirror") triggerMirrorDetect();
+    }, AUTO_AI_DELAY);
+  }
   input.addEventListener("scroll", syncScroll);
 
   // 鼠标在 textarea 上移动时，反查是否悬停在某个命中词上
@@ -570,8 +592,24 @@
       hideCard();
       render();
       syncRewriteBox(); // 按模式显示对应的 AI 操作区并刷新状态
+
+      // 切到学习/镜像模式后，若当前文本还没跑过对应 AI，自动补跑一次
+      maybeAutoAiOnModeEnter();
     });
   });
+
+  // 进入学习/镜像模式时，若该模式的 AI 结果尚未覆盖当前文本，自动触发一次。
+  // 已有对应结果（切回来看旧结果）则不重复跑，省 token。
+  function maybeAutoAiOnModeEnter() {
+    if (autoAiTimer) { clearTimeout(autoAiTimer); autoAiTimer = null; }
+    const text = input.value.trim();
+    if (!text || !AI.hasKey()) return;
+    if (currentMode === "learning" && learnAiHitsForText !== input.value) {
+      triggerLearnAnalyze();
+    } else if (currentMode === "mirror" && mirrorAiHitsForText !== input.value) {
+      triggerMirrorDetect();
+    }
+  }
 
   // 原文（sourceText）变化后，把各模式指向旧文本的 AI 结果统一作废
   function invalidateStaleAiResults() {
