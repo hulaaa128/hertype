@@ -102,5 +102,86 @@
     return out.trim();
   }
 
-  window.HERTYPE_AI = { getConfig, saveConfig, hasKey, rewrite, DEFAULT_BASE, DEFAULT_MODEL };
+  // 镜像模式 prompt：找出词库没覆盖的性别化表达，给出各自的「男版对应词」供逐词高亮替换
+  const MIRROR_PROMPT =
+    "你是一个女性主义语言实验助手。用户会给你一段中文文本，请找出其中所有针对女性的羞辱、" +
+    "规训、刻板印象或外貌/性经验/母职评判的表达（包括谐音、变形、隐晦说法），" +
+    "并为每一处给出「性别对调」后指向男性的对应说法。\n" +
+    "分类只能从以下六类里选：maternal（母职/亲属羞辱）、sexual（性经验羞辱）、" +
+    "feminine（女性气质贬低）、rivalry（女性竞争污名）、appearance（外貌规训）、" +
+    "merit（能力性化否定）。\n" +
+    "要求：\n" +
+    "1. 只返回一个 JSON 数组，不要任何额外文字、不要 markdown 代码块；\n" +
+    "2. 数组每项格式：{\"fragment\":\"命中的原文片段（必须逐字出现在原文里）\",\"category\":\"六类之一\",\"mirror\":\"性别对调后的男版说法；若这套羞辱根本没有男性对应词，mirror 填空字符串\",\"explain\":\"一句话点破双标\"}；\n" +
+    "3. fragment 必须是原文里真实存在的连续子串，不要改写、不要加引号；\n" +
+    "4. 如果没有发现任何此类表达，返回空数组 []。";
+
+  /**
+   * 镜像模式 AI 补充：返回 [{ fragment, category, mirror, explain }]，
+   * 供前端在原文上逐词高亮替换（与本地词库命中合并）。失败一律 reject(Error)。
+   */
+  async function mirrorDetect(text) {
+    const { key, baseUrl, model } = getConfig();
+    if (!key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
+    if (!text.trim()) return [];
+
+    const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
+
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + key,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: MIRROR_PROMPT },
+            { role: "user", content: text },
+          ],
+        }),
+      });
+    } catch (e) {
+      throw new Error("请求发送失败:" + e.message + "(可能是接口地址不通或跨域,请检查设置)");
+    }
+
+    if (!resp.ok) {
+      let detail = "";
+      try { detail = await resp.text(); } catch (_) {}
+      throw new Error("接口返回 " + resp.status + " " + resp.statusText + "\n" + detail.slice(0, 500));
+    }
+
+    let data;
+    try {
+      data = await resp.json();
+    } catch (e) {
+      throw new Error("返回内容无法解析为 JSON:" + e.message);
+    }
+
+    let out = data?.choices?.[0]?.message?.content;
+    if (!out) throw new Error("返回里没有内容,原始返回:" + JSON.stringify(data).slice(0, 500));
+
+    // 容错：模型可能裹了 ```json 代码块，剥掉再解析
+    out = out.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    let arr;
+    try {
+      arr = JSON.parse(out);
+    } catch (e) {
+      throw new Error("AI 返回不是合法 JSON:" + out.slice(0, 300));
+    }
+    if (!Array.isArray(arr)) return [];
+    const VALID_CATS = ["maternal", "sexual", "feminine", "rivalry", "appearance", "merit"];
+    return arr
+      .filter((it) => it && typeof it.fragment === "string" && it.fragment && VALID_CATS.includes(it.category))
+      .map((it) => ({
+        fragment: it.fragment,
+        category: it.category,
+        mirror: typeof it.mirror === "string" ? it.mirror : "",
+        explain: typeof it.explain === "string" ? it.explain : "",
+      }));
+  }
+
+  window.HERTYPE_AI = { getConfig, saveConfig, hasKey, rewrite, mirrorDetect, DEFAULT_BASE, DEFAULT_MODEL };
 })();

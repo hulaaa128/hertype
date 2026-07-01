@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HerType · 父权语言拼写检查器</title>
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <header class="site-header">
@@ -69,12 +69,22 @@
         ></textarea>
       </div>
 
-      <!-- AI 整句重写结果直接写回上方输入框，原文不留；此处仅保留极简状态条 -->
+      <!-- AI 整句重写：点「重写」按钮才调用，结果写回上方输入框，原文不留 -->
       <div class="rewrite-box" id="rewriteBox" hidden>
         <div class="rewrite-head">
           <span class="rewrite-title">AI 重写</span>
           <span class="rewrite-state" id="rewriteState"></span>
+          <button type="button" class="rewrite-run" id="rewriteRun">重写这段</button>
           <button type="button" class="rewrite-copy" id="rewriteCopy" hidden>复制</button>
+        </div>
+      </div>
+
+      <!-- 镜像模式：本地词库先逐词对调，点按钮让 AI 补出词库没覆盖的性别化表达 -->
+      <div class="rewrite-box" id="mirrorBox" hidden>
+        <div class="rewrite-head">
+          <span class="rewrite-title">镜像 · AI 补充</span>
+          <span class="rewrite-state" id="mirrorState"></span>
+          <button type="button" class="rewrite-run" id="mirrorRun">AI 补充对调</button>
         </div>
       </div>
     </div>
@@ -98,11 +108,11 @@
 
   <footer class="site-footer">
     <p>语言不仅表达思想，也塑造思想。</p>
-    <p class="muted">所有检测均在本地运行，不上传任何输入。</p>
+    <p class="muted">学习模式完全在本地运行、不上传任何输入；输出模式的 AI 重写、镜像模式的 AI 对调会把该段文本发送给你配置的大模型。</p>
   </footer>
 
   <script src="lexicon.js?v=3"></script>
-  <script src="ai.js?v=3"></script>
-  <script src="app.js?v=5"></script>
+  <script src="ai.js?v=4"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

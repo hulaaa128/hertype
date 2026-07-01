@@ -292,17 +292,20 @@ html, body {
 .hit {
   background: transparent;
   color: inherit;
-  /* 红色波浪下划线——核心视觉 */
+  /* 红色波浪下划线——核心视觉。线宽随严重度（--sev:1~5）加粗：轻则细、重则粗 */
   text-decoration: underline wavy var(--cat-color, var(--accent));
-  text-decoration-thickness: 2px;
+  text-decoration-thickness: calc(1px + var(--sev, 3) * 0.5px);
   text-underline-offset: 3px;
   pointer-events: auto;        /* 命中词重新接收事件，可悬停 */
   cursor: help;
   border-radius: 2px;
   transition: background 0.15s ease;
 }
+/* 高严重度（4-5）再叠一层浅底，让「最该收手的词」更跳出来 */
+.hit[data-sev="4"] { background: color-mix(in srgb, var(--cat-color) 7%, transparent); }
+.hit[data-sev="5"] { background: color-mix(in srgb, var(--cat-color) 13%, transparent); }
 .hit:hover {
-  background: color-mix(in srgb, var(--cat-color) 14%, transparent);
+  background: color-mix(in srgb, var(--cat-color) 18%, transparent);
 }
 /* 镜像模式下「无男版对应词」的刺眼空缺：虚线框 + 浅底，一眼看出「这里本该有词却没有」 */
 .hit--blank {
@@ -377,8 +380,10 @@ html, body {
   border-radius: 16px;
 }
 .stats-total {
+  display: block;
   font-size: 15px;
   font-weight: 600;
+  line-height: 1.7;
   color: var(--accent);
 }
 .stats-bars {
@@ -425,8 +430,26 @@ html, body {
   font-size: 12px;
   color: var(--muted);
 }
+.rewrite-run {
+  margin-left: auto;   /* 主操作按钮推到状态条最右 */
+  padding: 5px 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.rewrite-run:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.rewrite-run:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .rewrite-copy {
-  margin-left: auto;   /* 复制按钮推到状态条最右 */
   padding: 5px 14px;
   border: 1.5px solid var(--paper-line);
   border-radius: 20px;

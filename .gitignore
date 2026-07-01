@@ -1,5 +1,6 @@
 # Playwright MCP 测试产物
 .playwright-mcp/
+shot-*.png
 
 # macOS
 .DS_Store
