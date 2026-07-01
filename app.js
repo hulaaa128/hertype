@@ -20,7 +20,7 @@
     prescriptive: "用「就该、就得、才像话」规定女性的人生——听起来像关心，实则是替她画好一条不许越界的线。",
     derogation: "同一个称呼，指向女性时就染上贬义——语言本身记录了谁被默认为低一等。",
     dehumanize: "把女性比作牲畜或食物——是待宰、待驯、待人挑选和享用之物，而非一个人。",
-    default_male:"默认这个角色是男性，或用亲昵称呼把女性降格——女性得额外证明自己「也算」，或被当成小妹妹对待。",
+    default_male:"这个身份默认是男性，女性出场就得多挂一个「女」字——男人从不用证明自己「也算」。",
   };
 
   // ---- DOM 引用 ----
@@ -358,10 +358,19 @@
         cat.label + " · 严重度 " + "●".repeat(entry.severity) + "○".repeat(5 - entry.severity);
     } else if (currentMode === "mirror") {
       if (entry.mirror === "") {
-        critBody.textContent = "「" + entry.trigger + "」性别对调后……找不到对应的词。男性几乎没有被这样羞辱的说法——这套词，是专为羞辱女性而造的。";
+        // 对调后没有男版：AI 命中优先用它自己的解释，本地词库命中用通用模板兜底
+        critBody.textContent = entry.explain
+          ? entry.explain
+          : "「" + entry.trigger + "」性别对调后……找不到对应的词。男性几乎没有被这样羞辱的说法——这套词，是专为羞辱女性而造的。";
         critFoot.textContent = cat.label + " · 无男版对应词";
       } else {
-        critBody.textContent = "性别对调后：「" + entry.trigger + "」→「" + entry.mirror + "」。觉得别扭吗？这份别扭，正是双标的证据。";
+        // 有男版：先给出对调结果，再补一句「为什么」。
+        // AI 命中带 explain 时用 AI 的（针对具体句子，更准）；本地词库命中用中性模板。
+        const why = entry.explain
+          ? entry.explain
+          : "同一句话，对着男性说时你是什么感觉？";
+        critBody.textContent =
+          "性别对调后：「" + entry.trigger + "」→「" + entry.mirror + "」。" + why;
         critFoot.textContent = cat.label;
       }
     } else {

@@ -152,11 +152,11 @@ const LEXICON = [
   },
   {
     trigger: "母狗",
-    category: "sexual",
+    category: "dehumanize",
     severity: 5,
     mirror: "",
-    neutral: "［性羞辱词］",
-    explain: "把女性贬为发情的雌性牲畜，同时性化与去人化。「母」字精准锁定生理性别，是对女性身体和尊严的双重剥夺。",
+    neutral: "［非人化词］",
+    explain: "把女性贬为发情的雌性牲畜，直接抹去其人的身份。「母」字精准锁定生理性别，在动物化之外再叠一层性化——是对女性身体和尊严的双重剥夺。",
     rewrite: "这个人",
   },
   {
@@ -329,11 +329,11 @@ const LEXICON = [
   },
   {
     trigger: "母猪",
-    category: "appearance",
+    category: "dehumanize",
     severity: 4,
-    mirror: "公猪",
-    neutral: "［外貌羞辱词］",
-    explain: "用雌性牲畜羞辱女性身材，双重物化：既贬低外貌，又用「母」字把攻击精准对准女性生理性别。男性发胖很少被这样动物化。",
+    mirror: "",
+    neutral: "［非人化词］",
+    explain: "用雌性牲畜羞辱女性身材，把人贬为可挑选、可嫌弃的牲口。「母」字把攻击精准对准女性生理性别——男性发胖很少被这样动物化。",
     rewrite: "（去掉外貌攻击）",
   },
   {
@@ -421,11 +421,11 @@ const LEXICON = [
   },
   {
     trigger: "女司机",
-    category: "merit",
+    category: "default_male",
     severity: 3,
-    mirror: "男司机",
-    neutral: "［能力性化否定］",
-    explain: "出事故时特意强调「女司机」，把个体失误归因于性别群体。男性肇事远多于女性，却从没有「男司机」作为一个贬义标签存在。",
+    mirror: "司机",
+    neutral: "［阳性默认］",
+    explain: "出事故时特意强调「女司机」，把个体失误归因于性别群体。男性肇事远多于女性，却从没有「男司机」作为一个贬义标签存在——「司机」默认是男的，女性开车才要额外标注。",
     rewrite: "司机",
   },
 ];
