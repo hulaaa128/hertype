@@ -239,18 +239,19 @@ html, body {
   padding: 10px 20px;
   border: none;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--accent), #9c36b5);
+  background: var(--accent);
   color: #fff;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(194, 37, 92, 0.28);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  box-shadow: 0 3px 10px rgba(194, 37, 92, 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
 }
 .allai-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(194, 37, 92, 0.36);
+  filter: brightness(1.06);
+  box-shadow: 0 5px 16px rgba(194, 37, 92, 0.28);
 }
 .allai-btn:active { transform: translateY(0); }
 .allai-btn:disabled {
@@ -264,9 +265,9 @@ html, body {
   color: var(--muted);
 }
 .allai-state.is-loading { color: var(--accent); }
-.allai-state.is-ok { color: #2f9e44; }
-.allai-state.is-warn { color: #e8590c; }
-.allai-state.is-error { color: #c92a2a; }
+.allai-state.is-ok { color: var(--accent); }
+.allai-state.is-warn { color: #b5651d; }
+.allai-state.is-error { color: #a61e4d; }
 
 /* ---- 编辑区：双层叠合 ---- */
 .editor {
