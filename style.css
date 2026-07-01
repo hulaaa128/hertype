@@ -319,6 +319,35 @@ html, body {
 .editor-backdrop.mode-replaced .hit {
   background: color-mix(in srgb, var(--cat-color) 12%, transparent);
 }
+/* 镜像模式 · AI 补充命中：词库没覆盖、点「AI 补充对调」后新抓出来的表达。
+   用实底色 + 左上角小圆点角标，明显区别于本地命中（波浪线/虚线框），一眼看出是 AI 补的 */
+.hit--ai {
+  position: relative;
+  background: color-mix(in srgb, var(--cat-color) 22%, transparent);
+  border-bottom: 2px solid var(--cat-color, var(--accent));
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 1px;
+}
+.hit--ai::after {
+  content: "AI";
+  position: absolute;
+  top: -0.7em;
+  right: -0.4em;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--cat-color, var(--accent));
+  border-radius: 6px;
+  padding: 1px 3px;
+  pointer-events: none;
+}
+/* AI 补充里「无男版对应词」的空白：实底 + 虚线，双重强调「AI 抓到了，但男性没有对应词」 */
+.hit--ai.hit--blank {
+  border-bottom: 2px dashed var(--cat-color, var(--accent));
+}
 
 /* ---- 批判卡片 ---- */
 .critique-card {

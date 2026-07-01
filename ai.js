@@ -47,9 +47,16 @@
 
   /**
    * 调用接口，把整句话重写。
-   * 成功 resolve 改写后的字符串；任何失败都 reject(Error)，错误信息原文带出，绝不静默吞。
+   * 优先走流式（stream:true）：边生成边通过 onDelta(chunk) 回调吐字，
+   * 体感更快、能看到进度；结束后 resolve 完整字符串。
+   * 若网关不支持流式（返回的不是 text/event-stream，或解析不出增量），
+   * 自动降级为一次性读取，保证仍能出结果。
+   * 任何失败都 reject(Error)，错误信息原文带出，绝不静默吞。
+   *
+   * @param {string} text 待重写文本
+   * @param {(chunk:string)=>void} [onDelta] 每来一块增量文本就回调一次（可选）
    */
-  async function rewrite(text) {
+  async function rewrite(text, onDelta) {
     const { key, baseUrl, model } = getConfig();
     if (!key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
     if (!text.trim()) return "";
@@ -67,6 +74,7 @@
         },
         body: JSON.stringify({
           model: model,
+          stream: true, // 请求流式；网关不认时会照常返完整 JSON，下方据 content-type 判断
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: text },
@@ -88,6 +96,20 @@
       throw new Error("接口返回 " + resp.status + " " + resp.statusText + "\n" + detail.slice(0, 500));
     }
 
+    const ctype = (resp.headers.get("content-type") || "").toLowerCase();
+    const canStream = ctype.includes("text/event-stream") && resp.body && typeof onDelta === "function";
+
+    // —— 流式路径：逐块读 SSE，解析 data: 行里的 delta.content ——
+    if (canStream) {
+      try {
+        return await readStream(resp, onDelta);
+      } catch (e) {
+        // 流读到一半炸了：不静默吞，直接抛给上层（此时可能已吐了部分字）
+        throw new Error("流式读取中断:" + e.message);
+      }
+    }
+
+    // —— 降级路径：网关没给流,一次性解析完整 JSON ——
     let data;
     try {
       data = await resp.json();
@@ -99,7 +121,52 @@
     if (!out) {
       throw new Error("返回里没有找到改写结果,原始返回:" + JSON.stringify(data).slice(0, 500));
     }
-    return out.trim();
+    const trimmed = out.trim();
+    if (typeof onDelta === "function") onDelta(trimmed); // 降级时也回调一次，让 UI 统一走同一条路
+    return trimmed;
+  }
+
+  /**
+   * 读取 OpenAI 兼容的 SSE 流。逐行解析 `data: {...}`，
+   * 抽取 choices[0].delta.content 累加，并通过 onDelta 实时回调增量。
+   * 遇到 `data: [DONE]` 结束。返回累加后的完整字符串。
+   */
+  async function readStream(resp, onDelta) {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";  // 跨 chunk 的残行缓冲（一个 SSE 事件可能被切成两半）
+    let full = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // 按行切；最后一段可能不完整，留在 buffer 里等下一块
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || !line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        let obj;
+        try {
+          obj = JSON.parse(payload);
+        } catch (_) {
+          continue; // 半行/心跳等杂音，跳过
+        }
+        const delta = obj?.choices?.[0]?.delta?.content;
+        if (delta) {
+          full += delta;
+          onDelta(full.trim()); // 回调累计到目前为止的全文，UI 直接整体替换即可
+        }
+      }
+    }
+
+    if (!full.trim()) throw new Error("流式返回里没有任何内容");
+    return full.trim();
   }
 
   // 镜像模式 prompt：找出词库没覆盖的性别化表达，给出各自的「男版对应词」供逐词高亮替换

@@ -53,10 +53,13 @@
 
   let currentMode = "learning"; // learning | output | mirror
 
-  // B 方案：三个模式各自维护独立文本，互不污染。
-  // 输出模式的 AI 重写只写回 modeTexts.output；切回学习/镜像模式时还原各自原文做本地解析。
+  // 单向同步方案：学习模式是唯一「输入源」，只标注不改字。
+  // 切到输出/镜像模式时，自动从 sourceText 载入学习模式的当前原文。
+  // - 输出模式的 AI 重写结果只写进 outputText（临时、可复制），绝不回写 sourceText；
+  // - 镜像模式在 sourceText 上做词库对调 + AI 补充，也不改 sourceText。
   const SAMPLE = "他妈的这个绿茶婊真恶心，肯定是陪睡上位的。";
-  const modeTexts = { learning: SAMPLE, output: SAMPLE, mirror: SAMPLE };
+  let sourceText = SAMPLE; // 学习模式原文，唯一输入源
+  let outputText = SAMPLE; // 输出模式当前展示文本（重写前=原文，重写后=AI 结果）
 
   // 镜像模式的 AI 补充命中（词库没覆盖、AI 找出的性别化表达）。
   // mirrorAiHitsForText 记录这批命中对应的文本，文本一变就作废，防止画错位置。
@@ -226,6 +229,8 @@
         } else {
           shown = e.mirror;
         }
+        // AI 补充命中：在镜像模式额外加高亮标记，让「点 AI 补充对调后新抓的词」一眼可见
+        if (e._ai) extraClass += " hit--ai";
       } else {
         // learning 和 output 都保留原词画波浪线；
         // output 模式的整句改写由下方 AI 结果区完成，不在镜像层逐词替换
@@ -388,7 +393,14 @@
   input.addEventListener("input", () => {
     render();
     if (applyingRewrite) return; // 这次 input 来自重写结果写回，不重置状态
-    modeTexts[currentMode] = input.value; // 用户手动编辑：存回当前模式自己的文本
+    // 用户手动编辑：按当前模式存回对应的文本。
+    // 学习模式改的是唯一输入源 sourceText；输出模式改的是临时文本 outputText；
+    // 镜像模式基于 sourceText 呈现，用户在镜像框里的手动编辑视作改原文。
+    if (currentMode === "output") {
+      outputText = input.value;
+    } else {
+      sourceText = input.value; // learning / mirror 都写回原文
+    }
     // 输出模式改为「点按钮才重写」，不再自动触发；内容变了就把状态清一下
     if (currentMode === "output") {
       setRewriteState("", "");
@@ -445,11 +457,27 @@
 
   modeBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
-      modeTexts[currentMode] = input.value; // 离开前，先把当前框内容存回旧模式
+      // 离开前，把当前框内容存回对应的文本源
+      if (currentMode === "output") outputText = input.value;
+      else sourceText = input.value;
+
       modeBtns.forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
       currentMode = btn.dataset.mode;
-      input.value = modeTexts[currentMode]; // 载入新模式自己的文本
+
+      // 单向同步：输出/镜像模式都以学习模式的原文 sourceText 为准载入。
+      // 输出模式载入原文作为「待重写」初值（重写后才变成 AI 结果）；
+      // 镜像模式载入原文做词库对调。学习模式本就展示 sourceText。
+      if (currentMode === "output") {
+        outputText = sourceText;   // 切进来先跟原文对齐，等用户点「重写」
+        input.value = outputText;
+      } else {
+        input.value = sourceText;
+      }
+      // 换文本了，镜像的 AI 补充命中作废（位置会错）
+      mirrorAiHits = [];
+      mirrorAiHitsForText = null;
+
       hideCard();
       render();
       syncRewriteBox(); // 切到/离开输出模式时，决定是否显示 AI 重写区
@@ -616,11 +644,25 @@
     rewriteCopy.hidden = true;
     rewriteRun.disabled = true;
 
+    // 流式回调：AI 每吐一块就把「累计全文」实时写回框里，像打字机一样。
+    // onDelta 收到的是「到目前为止的完整字符串」（见 ai.js readStream），直接整体替换即可。
+    const onDelta = (partial) => {
+      if (seq !== rewriteSeq) return; // 已有更新的请求，丢弃这次旧结果的吐字
+      outputText = partial; // 边生成边写进输出模式的临时文本，不碰 sourceText
+      if (currentMode === "output" && partial !== input.value) {
+        applyingRewrite = true;
+        input.value = partial;
+        input.dispatchEvent(new Event("input", { bubbles: true })); // 触发 render 刷新镜像层/统计
+        applyingRewrite = false;
+      }
+      setRewriteState("正在重写…", "loading");
+    };
+
     try {
-      const out = await AI.rewrite(text);
+      const out = await AI.rewrite(text, onDelta);
       if (seq !== rewriteSeq) return; // 已有更新的请求，丢弃这次旧结果
       if (out) {
-        modeTexts.output = out; // 重写结果归属输出模式这一份，绝不污染学习/镜像
+        outputText = out; // 以最终完整结果为准（兜底：流式未触发时这里补齐），只归输出模式
         // 仅当用户此刻仍停留在输出模式时，才把结果写回可见的框（途中切走则只更新数据）
         if (currentMode === "output" && out !== input.value) {
           applyingRewrite = true;
@@ -630,7 +672,7 @@
         }
       }
       setRewriteState("已重写", "ok");
-      rewriteCopy.hidden = !modeTexts.output;
+      rewriteCopy.hidden = !outputText;
     } catch (err) {
       if (seq !== rewriteSeq) return;
       setRewriteState("失败：" + err.message, "error"); // 错误贴进状态条，不静默吞
@@ -651,7 +693,7 @@
 
   rewriteCopy.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(modeTexts.output);
+      await navigator.clipboard.writeText(outputText);
       rewriteCopy.textContent = "已复制 ✓";
       setTimeout(() => (rewriteCopy.textContent = "复制"), 1500);
     } catch (_) {
@@ -659,8 +701,8 @@
     }
   });
 
-  // ---- 初始示例：首屏即学习模式，载入该模式自己的文本 ----
-  input.value = modeTexts[currentMode];
+  // ---- 初始示例：首屏即学习模式，载入原文 ----
+  input.value = sourceText;
   render();
   syncRewriteBox(); // 首屏学习模式：隐藏重写区 / 镜像补充区
 })();
