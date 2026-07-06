@@ -13,8 +13,8 @@
   const LS_BASE = "hertype.baseUrl";
   const LS_MODEL = "hertype.model";
 
-  // 默认值（陛下提供的京东云中转）
-  const DEFAULT_BASE = "http://ai-api.jdcloud.com/v1";
+  // 默认值：接口地址默认为空，需用户自行填写
+  const DEFAULT_BASE = "";
   const DEFAULT_MODEL = "gpt-5.5";
 
   // 输出模式 prompt：核心目标不是「消毒脏话」，而是「去掉语言里非必要的性别标注与性别预设」，
