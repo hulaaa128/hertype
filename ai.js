@@ -13,9 +13,11 @@
   const LS_BASE = "hertype.baseUrl";
   const LS_MODEL = "hertype.model";
 
-  // 默认值：接口地址默认为空，需用户自行填写
-  const DEFAULT_BASE = "";
-  const DEFAULT_MODEL = "gpt-5.5";
+  // 中转地址：默认走站长部署的 Cloudflare Worker(key 藏在服务器端,访客无需填写)。
+  // 用户若在「设置」里填了自己的接口地址+key,则用用户自己的,不走中转。
+  const PROXY_BASE = "https://cool-wood-f280.364231060.workers.dev";
+  const DEFAULT_BASE = PROXY_BASE;
+  const DEFAULT_MODEL = "glm-4-flash";
 
   // 输出模式 prompt：核心目标不是「消毒脏话」，而是「去掉语言里非必要的性别标注与性别预设」，
   // 让句子回到就事论事——既不制造对立，也不啰嗦地给中性事物贴性别。
@@ -66,7 +68,9 @@
    */
   async function rewrite(text, onDelta) {
     const { key, baseUrl, model } = getConfig();
-    if (!key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
+    // 走中转(PROXY_BASE)时无需 key;只有用户自定义了接口地址却没填 key 才报错。
+    const viaProxy = baseUrl.replace(/\/+$/, "") === PROXY_BASE;
+    if (!viaProxy && !key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
     if (!text.trim()) return "";
 
     // 去掉 baseUrl 结尾多余的斜杠,再拼路径
@@ -82,7 +86,8 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + key,
+          // key 为空(走中转)时不发 Authorization,由中转在服务器端注入。
+          ...(key ? { Authorization: "Bearer " + key } : {}),
         },
         body: JSON.stringify({
           model: model,
@@ -207,7 +212,9 @@
    */
   async function mirrorDetect(text) {
     const { key, baseUrl, model } = getConfig();
-    if (!key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
+    // 走中转(PROXY_BASE)时无需 key;只有用户自定义了接口地址却没填 key 才报错。
+    const viaProxy = baseUrl.replace(/\/+$/, "") === PROXY_BASE;
+    if (!viaProxy && !key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
     if (!text.trim()) return [];
 
     const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
@@ -218,7 +225,8 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + key,
+          // key 为空(走中转)时不发 Authorization,由中转在服务器端注入。
+          ...(key ? { Authorization: "Bearer " + key } : {}),
         },
         body: JSON.stringify({
           model: model,
@@ -314,7 +322,9 @@
    */
   async function analyze(text) {
     const { key, baseUrl, model } = getConfig();
-    if (!key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
+    // 走中转(PROXY_BASE)时无需 key;只有用户自定义了接口地址却没填 key 才报错。
+    const viaProxy = baseUrl.replace(/\/+$/, "") === PROXY_BASE;
+    if (!viaProxy && !key) throw new Error("尚未填写 API key,请到右上角「设置」里填入。");
     if (!text.trim()) return [];
 
     const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
@@ -325,7 +335,8 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + key,
+          // key 为空(走中转)时不发 Authorization,由中转在服务器端注入。
+          ...(key ? { Authorization: "Bearer " + key } : {}),
         },
         body: JSON.stringify({
           model: model,
