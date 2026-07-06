@@ -59,6 +59,27 @@
     return base === PROXY_BASE;
   }
 
+  // 带超时 + 重试的 fetch 包装:免费模型偶发慢/抖动导致 Failed to fetch,
+  // 加一层超时控制(默认 30s)和失败自动重试(默认再试 1 次),显著降低偶发失败。
+  async function fetchWithRetry(url, opts, timeoutMs = 30000, retries = 1) {
+    let lastErr;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const resp = await fetch(url, { ...opts, signal: ctrl.signal });
+        clearTimeout(timer);
+        return resp;
+      } catch (e) {
+        clearTimeout(timer);
+        lastErr = e;
+        // 最后一次失败就抛出;否则稍等 800ms 再重试
+        if (attempt < retries) await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+    throw lastErr;
+  }
+
   /**
    * 调用接口，把整句话重写。
    * 优先走流式（stream:true）：边生成边通过 onDelta(chunk) 回调吐字，
@@ -86,7 +107,7 @@
 
     let resp;
     try {
-      resp = await fetch(url, {
+      resp = await fetchWithRetry(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -225,7 +246,7 @@
 
     let resp;
     try {
-      resp = await fetch(url, {
+      resp = await fetchWithRetry(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -308,13 +329,8 @@
     "- default_male：阳性默认或称谓降格（默认某角色是男性、需加「女」前缀才成立；或用甜心/小姑娘等降格称呼）\n" +
     "判定核心信号：同一行为若男女用词不对称、或把女性成就归因于身体、" +
     "或性别对调后语义变荒谬，即为命中。\n" +
-    "重要——归类前先想清楚「这个词在中文里到底在骂什么」，按真实攻击点归类，不要只看字面：\n" +
-    "· 妲己/狐狸精/绿茶/绿茶婊/白莲花/心机婊：核心是「暗示女性靠色相、性或勾引男人上位」，" +
-    "属 sexual 或 merit（若强调用身体换取成就用 merit），不要因为它像女性形象就误判成 feminine；\n" +
-    "· 「学术妲己」「靠脸上位」这类：把女性的学术/职业成就归因于色相或性，属 merit；\n" +
-    "· feminine（女性气质贬低）只用于「把『像女人/娘』本身当侮辱」的场景（娘炮/娘娘腔/婆婆妈妈），" +
-    "不要把针对具体女性的荡妇羞辱塞进这一类；\n" +
-    "· 心机/野心/母老虎/女强人（贬义）：给女性的能动性贴负面标签，属 rivalry。\n" +
+    "归类按真实攻击点、别看字面：妲己/绿茶/狐狸精/学术妲己=暗示靠色相或性上位，归 sexual 或 merit（换取成就用 merit），别归 feminine；" +
+    "feminine 只用于「把『像女人/娘』当侮辱」（娘炮/娘娘腔）；心机/母老虎/女强人=rivalry。\n" +
     "要求：\n" +
     "1. 只返回一个 JSON 数组，不要任何额外文字、不要 markdown 代码块；\n" +
     "2. 数组每项格式：{\"fragment\":\"命中的原文片段（必须逐字出现在原文里）\",\"category\":\"十类之一\",\"severity\":1到5的整数,\"explain\":\"一句话点破它如何再生产性别不平等；若是规训型这类善意包装，语气要冷静点破而非攻击\"}；\n" +
@@ -342,7 +358,7 @@
 
     let resp;
     try {
-      resp = await fetch(url, {
+      resp = await fetchWithRetry(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
