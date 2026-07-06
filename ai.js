@@ -52,7 +52,11 @@
   }
 
   function hasKey() {
-    return !!localStorage.getItem(LS_KEY);
+    // 填了自己的 key 当然可用;没填 key 但走中转(PROXY_BASE)时也算可用——
+    // 中转在服务器端注入 key,访客无需填写。
+    if (localStorage.getItem(LS_KEY)) return true;
+    const base = (localStorage.getItem(LS_BASE) || DEFAULT_BASE).replace(/\/+$/, "");
+    return base === PROXY_BASE;
   }
 
   /**
