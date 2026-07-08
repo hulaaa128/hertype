@@ -67,7 +67,7 @@
   // 输出/镜像模式默认从 sourceText 载入，但一旦点了 AI（重写/对调），
   // 该模式的 AI 结果就「锁定」——切走再切回来仍显示 AI 结果，不被 sourceText 冲掉。
   // 锁定只在原文没变时有效：sourceText 一改，各模式的 AI 结果作废（对旧文本，会张冠李戴）。
-  const SAMPLE = "他妈的这个绿茶婊真恶心，肯定是陪睡上位的。";
+  const SAMPLE = "男生要有担当。\n女生不要太强势。";
   let sourceText = SAMPLE; // 学习模式原文，唯一输入源
   let outputText = SAMPLE; // 输出模式当前展示文本（重写前=原文，重写后=AI 结果）
   // 输出模式 AI 重写结果锁定：记录这次重写结果对应的源文本；与 sourceText 不符即作废
