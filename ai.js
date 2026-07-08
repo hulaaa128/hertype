@@ -13,9 +13,9 @@
   const LS_BASE = "hertype.baseUrl";
   const LS_MODEL = "hertype.model";
 
-  // 中转地址：默认走站长部署的 Cloudflare Worker(key 藏在服务器端,访客无需填写)。
+  // 中转地址：默认走站长部署的服务器中转(key 藏在服务器端,访客无需填写)。
   // 用户若在「设置」里填了自己的接口地址+key,则用用户自己的,不走中转。
-  const PROXY_BASE = "https://cool-wood-f280.364231060.workers.dev";
+  const PROXY_BASE = "https://hulaai.online/hertype-ai";
   const DEFAULT_BASE = PROXY_BASE;
   const DEFAULT_MODEL = "glm-4-flash";
 
@@ -57,6 +57,22 @@
     if (localStorage.getItem(LS_KEY)) return true;
     const base = (localStorage.getItem(LS_BASE) || DEFAULT_BASE).replace(/\/+$/, "");
     return base === PROXY_BASE;
+  }
+
+  // 默认公共中转是访客免填 key 的兜底；它不可达时，要明确告诉用户可切到自有接口。
+  function isUsingProxy(baseUrl) {
+    return (baseUrl || DEFAULT_BASE).replace(/\/+$/, "") === PROXY_BASE;
+  }
+
+  function buildSendError(e, baseUrl) {
+    const rawMessage = e && e.message ? e.message : String(e);
+    if (isUsingProxy(baseUrl)) {
+      return new Error(
+        "公共中转暂时不可用:" + rawMessage +
+        "。请点右上角「设置」填写自己的 OpenAI 兼容接口地址、API Key 和模型后重试。"
+      );
+    }
+    return new Error("请求发送失败:" + rawMessage + "(可能是接口地址不通或跨域,请检查设置)");
   }
 
   // 带超时 + 重试的 fetch 包装:免费模型偶发慢/抖动导致 Failed to fetch,
@@ -127,7 +143,7 @@
       });
     } catch (e) {
       // 网络层失败(超时/跨域/DNS)——把原始信息带出
-      throw new Error("请求发送失败:" + e.message + "(可能是接口地址不通或跨域,请检查设置)");
+      throw buildSendError(e, baseUrl);
     }
 
     if (!resp.ok) {
@@ -262,7 +278,7 @@
         }),
       });
     } catch (e) {
-      throw new Error("请求发送失败:" + e.message + "(可能是接口地址不通或跨域,请检查设置)");
+      throw buildSendError(e, baseUrl);
     }
 
     if (!resp.ok) {
@@ -374,7 +390,7 @@
         }),
       });
     } catch (e) {
-      throw new Error("请求发送失败:" + e.message + "(可能是接口地址不通或跨域,请检查设置)");
+      throw buildSendError(e, baseUrl);
     }
 
     if (!resp.ok) {
